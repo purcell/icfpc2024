@@ -1,0 +1,10 @@
+#!/bin/bash -e
+
+token="$(cat token)"
+
+curl \
+   -s -D/dev/stderr \
+   -X POST https://boundvariable.space/communicate \
+   -H 'Content-Type: text/plain' \
+   -H "Authorization: Bearer $token" \
+   -d @-

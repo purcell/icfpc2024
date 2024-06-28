@@ -1,0 +1,4 @@
+(library
+ (name icfpc2024)
+ (wrapped false)
+ (libraries zarith))

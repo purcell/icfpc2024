@@ -1,0 +1,26 @@
+(executable
+ (public_name encs)
+ (name enc)
+ (modules enc)
+ (libraries icfpc2024)
+)
+
+(executable
+ (public_name decs)
+ (name dec)
+ (modules dec)
+ (libraries icfpc2024)
+)
+
+(executable
+ (public_name eval)
+ (name eval)
+ (modules eval)
+ (libraries icfpc2024)
+)
+
+(env
+  (release
+   (ocamlopt_flags (:standard -O3)))
+ (dev
+    (flags (:standard -warn-error -A))))
