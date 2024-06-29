@@ -87,6 +87,16 @@ let parse_expr s =
   e
 ;;
 
+let rec reduce e var value =
+  let recurse ex = reduce ex var value in
+  match e with
+  | Var v -> if v.varnum = var then value else e
+  | Strn _ | Integer _ | Bool _ -> e
+  | UnOp o -> UnOp { o with arg = recurse o.arg }
+  | BinOp o -> BinOp { o with arg1 = recurse o.arg1; arg2 = recurse o.arg2 }
+  | If i -> If { i with cond = recurse i.cond }
+  | Lambda l -> if l.varnum = var then e else Lambda { l with arg = recurse l.arg }
+;;
 
 (* ---------------------------------------------------------------------- *)
 (* EVALUATION *)
@@ -96,39 +106,13 @@ let bool_val e = match e with Bool v -> v | _ -> failwith "not a bool";;
 let string_val e = match e with Strn v -> v | _ -> failwith "not a string";;
 
 module IntMap = Map.Make(Int64);;
-type scope = expr IntMap.t;;
+let show_intmap m = [%show: (int64 * expr) list] (IntMap.to_list m);;
 
-
-let rec beta_reduce e scope =
-  let recur x = beta_reduce x scope in
+let rec eval e =
   match e with
   | Strn _ | Integer _ | Bool _ -> e
-  | If i -> If { cond = recur i.cond; when_true = recur i.when_true; when_false = recur i.when_false; }
-  | UnOp o ->  UnOp { op = o.op; arg = recur o.arg }
-  | BinOp o -> (match o.op with
-                 | '$' -> (match o.arg1 with
-                       | Lambda l ->
-                           Stdlib.print_string ("Applying " ^ (Int64.to_string l.varnum) ^ "\n");
-                           beta_reduce o.arg1 (IntMap.add l.varnum (recur o.arg2) scope)
-                       | _ -> recur o.arg1
-                     )
-                 | _ -> BinOp { op = o.op; arg1 = recur o.arg1; arg2 = recur o.arg2; }
-               )
-  | Lambda _l -> recur _l.arg
-  | Var v -> IntMap.find v.varnum scope
-;;
-
-let rec eval e scope =
-  Stdlib.print_string "-------------------------------\n";
-  Stdlib.print_string ("Scope: " ^ [%show: (int64 * expr) list] (IntMap.to_list scope));
-  Stdlib.print_newline ();
-  Stdlib.print_string (show_expr e);
-  Stdlib.print_newline ();
-  match e with
-  | Strn _ | Integer _ | Bool _ -> e
-  | If i -> if bool_val (eval i.cond scope)
-            then eval i.when_true scope else eval i.when_false scope
-  | UnOp o -> let argval = eval o.arg scope in
+  | If i -> eval (if bool_val (eval i.cond) then i.when_true else i.when_false)
+  | UnOp o -> let argval = eval o.arg in
       (match o.op with
         | '-' -> Integer (Int64.mul (-1L) (integer_val argval))
         | '!' -> Bool (not (bool_val argval))
@@ -136,8 +120,8 @@ let rec eval e scope =
         | '$' -> Strn (decode_string (encode_int (integer_val argval)))
         | _ -> failwith "unsupported unop"
       )
-  | BinOp o -> let intop f = Integer (f (integer_val (eval o.arg1 scope)) (integer_val (eval o.arg2 scope))) in
-               let cmpop f = Bool (f (integer_val (eval o.arg1 scope)) (integer_val (eval o.arg2 scope))) in
+  | BinOp o -> let intop f = Integer (f (integer_val (eval o.arg1)) (integer_val (eval o.arg2))) in
+               let cmpop f = Bool (f (integer_val (eval o.arg1)) (integer_val (eval o.arg2))) in
                (match o.op with
                  | '+' -> intop Int64.add
                  | '-' -> intop Int64.sub
@@ -146,37 +130,31 @@ let rec eval e scope =
                  | '%' -> intop Int64.(rem)
                  | '<' -> cmpop (<)
                  | '>' -> cmpop (>)
-                 | '=' -> Bool (match (eval o.arg1 scope) with
-                         | Integer v -> v = integer_val (eval o.arg2 scope)
-                         | Bool v -> v = bool_val (eval o.arg2 scope)
-                         | Strn v -> v = string_val (eval o.arg2 scope)
+                 | '=' -> Bool (match eval o.arg1 with
+                         | Integer v -> v = integer_val (eval o.arg2)
+                         | Bool v -> v = bool_val (eval o.arg2)
+                         | Strn v -> v = string_val (eval o.arg2)
                          | _ -> failwith "unsupported comparison"
                        )
-                 | '|' -> Bool (bool_val (eval o.arg1 scope) || bool_val (eval o.arg2 scope))
-                 | '&' -> Bool (bool_val (eval o.arg1 scope) && bool_val (eval o.arg2 scope))
-                 | '.' -> Strn (string_val (eval o.arg1 scope) ^ string_val (eval o.arg2 scope))
-                 | 'T' -> Strn (String.sub (string_val (eval o.arg2 scope)) 0 (Int64.to_int (integer_val (eval o.arg1 scope))))
-                 | 'D' -> let s = string_val (eval o.arg2 scope) in
-                          let n = Int64.to_int (integer_val (eval o.arg1 scope)) in
+                 | '|' -> Bool (bool_val (eval o.arg1) || bool_val (eval o.arg2))
+                 | '&' -> Bool (bool_val (eval o.arg1) && bool_val (eval o.arg2))
+                 | '.' -> Strn (string_val (eval o.arg1) ^ string_val (eval o.arg2))
+                 | 'T' -> Strn (String.sub (string_val (eval o.arg2)) 0 (Int64.to_int (integer_val (eval o.arg1))))
+                 | 'D' -> let s = string_val (eval o.arg2) in
+                          let n = Int64.to_int (integer_val (eval o.arg1)) in
                           Strn (String.sub s n (String.length s - n))
-                 | '$' -> (match o.arg1 with
-                       | Lambda l ->
-                           Stdlib.print_string ("Applying " ^ (Int64.to_string l.varnum) ^ "\n");
-                           eval l.arg (IntMap.add l.varnum o.arg2 scope)
-                       | _ -> eval o.arg1 scope
-                     )
+                | '$' -> (match o.arg1 with
+                      | Lambda l -> eval (reduce l.arg l.varnum o.arg2)
+                      | _ -> eval (BinOp { op = '$'; arg1 = eval o.arg1; arg2 = o.arg2 })   (* Force head *)
+                      )
                  | _ -> failwith "unsupported binop"
                )
-  | Lambda _l -> eval _l.arg scope
-  | Var v ->
-      (match IntMap.find_opt v.varnum scope with
-        | Some expr' -> eval expr' scope
-        | None -> failwith ("Missing value: " ^ Int64.to_string v.varnum)
-      )
+  | Lambda _ -> e
+  | Var _ -> failwith "unbound var"
 ;;
 
 
-let run s = eval (parse_expr s) IntMap.empty;;
+let run s = eval (parse_expr s);;
 
 (* assert (run "? B> I# I$ S9%3 S./" = Strn "no");; *)
 (* assert (run "U- I$" = Integer (-3L));; *)
@@ -196,10 +174,19 @@ let run s = eval (parse_expr s) IntMap.empty;;
 (* assert (string_val (run "B. S4% S34") = "test");; *)
 (* assert (string_val (run "BT I$ S4%34") = "tes");; *)
 (* assert (string_val (run "BD I$ S4%34") = "t");; *)
-
-Stdlib.print_string @@ "\n\nREDUCED: " ^ (show_expr (beta_reduce (parse_expr "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK") IntMap.empty));
-(* Stdlib.print_string @@ "\n\nRESULT: " ^ (show_expr (run "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK")); *)
 (* assert (run "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK" = Strn "Hello World!");; *)
-
 (* assert (run "B$ L\" B+ v\" v\" B* I$ I#" = parse_expr "I-");; *)
 (* assert (run "B$ L# B$ L\" B+ v\" v\" B* I$ I# v8" = parse_expr "I-");; *)
+
+let example raw =
+  (* Stdlib.print_string @@ "\n============================================================\nRAW:\n" ^ (show_expr (parse_expr raw)); *)
+  (* Stdlib.print_string @@ "\n============================================================\nREDUCED:\n" ^ (show_expr (beta_reduce (parse_expr raw))); *)
+  Stdlib.print_string @@ "\n============================================================\nRESULT:\n" ^ (show_expr (run raw));;
+;;
+
+let language_test =
+  "? B= B$ B$ B$ B$ L$ L$ L$ L# v$ I\" I# I$ I% I$ ? B= B$ L$ v$ I+ I+ ? B= BD I$ S4%34 S4 ? B= BT I$ S4%34 S4%3 ? B= B. S4% S34 S4%34 ? U! B& T F ? B& T T ? U! B| F F ? B| F T ? B< U- I$ U- I# ? B> I$ I# ? B= U- I\" B% U- I$ I# ? B= I\" B% I( I$ ? B= U- I\" B/ U- I$ I# ? B= I# B/ I( I$ ? B= I' B* I# I$ ? B= I$ B+ I\" I# ? B= U$ I4%34 S4%34 ? B= U# S4%34 I4%34 ? U! F ? B= U- I$ B- I# I& ? B= I$ B- I& I# ? B= S4%34 S4%34 ? B= F F ? B= I$ I$ ? T B. B. SM%,&k#(%#+}IEj}3%.$}z3/,6%},!.'5!'%y4%34} U$ B+ I# B* I$> I1~s:U@ Sz}4/}#,!)-}0/).43}&/2})4 S)&})3}./4}#/22%#4 S\").!29}q})3}./4}#/22%#4 S\").!29}q})3}./4}#/22%#4 S\").!29}q})3}./4}#/22%#4 S\").!29}k})3}./4}#/22%#4 S5.!29}k})3}./4}#/22%#4 S5.!29}_})3}./4}#/22%#4 S5.!29}a})3}./4}#/22%#4 S5.!29}b})3}./4}#/22%#4 S\").!29}i})3}./4}#/22%#4 S\").!29}h})3}./4}#/22%#4 S\").!29}m})3}./4}#/22%#4 S\").!29}m})3}./4}#/22%#4 S\").!29}c})3}./4}#/22%#4 S\").!29}c})3}./4}#/22%#4 S\").!29}r})3}./4}#/22%#4 S\").!29}p})3}./4}#/22%#4 S\").!29}{})3}./4}#/22%#4 S\").!29}{})3}./4}#/22%#4 S\").!29}d})3}./4}#/22%#4 S\").!29}d})3}./4}#/22%#4 S\").!29}l})3}./4}#/22%#4 S\").!29}N})3}./4}#/22%#4 S\").!29}>})3}./4}#/22%#4 S!00,)#!4)/.})3}./4}#/22%#4 S!00,)#!4)/.})3}./4}#/22%#4";;
+
+(* example language_test;; *)
+
+(* example "B$ B$ B$ B$ L$ L$ L$ L# v$ I\" I# I$ I%";; *)

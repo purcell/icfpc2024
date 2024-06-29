@@ -1,4 +1,4 @@
 let () =
-  match Icfp.parse_expr (In_channel.input_all Stdlib.stdin) with
-  | Icfp.Strn msg -> Stdlib.print_string msg
-  | _ -> failwith "not a string response"
+  let result = Icfp.parse_expr (In_channel.input_all Stdlib.stdin) in
+  Stdlib.print_string @@ Icfp.show_expr result;
+  Stdlib.print_newline ();
