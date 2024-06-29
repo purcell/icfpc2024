@@ -1,12 +1,17 @@
+module I = struct
+   include Z
+   let pp = Z.pp_print
+end;;
+
 type expr =
-| Integer of int64
+| Integer of I.t
 | Strn of string
 | BinOp of { op : char;  arg1 : expr; arg2 : expr }
 | UnOp of { op : char; arg : expr }
 | If of { cond : expr; when_true : expr; when_false: expr; }
 | Bool of bool
-| Lambda of { varnum: int64; arg : expr }
-| Var of { varnum: int64; }
+| Lambda of { varnum: I.t; arg : expr }
+| Var of { varnum: I.t; }
 [@@deriving show]
 ;;
 
@@ -19,9 +24,8 @@ let encode_char c = String.index string_chars c + 33 |> Char.chr;;
 let encode_string s = String.map encode_char s;;
 
 let encode_int i =
-  let rec go x = let div = Int64.div x 94L in
-                 let rem = Int64.rem x 94L in
-                 (if div = 0L then [] else go div) @ [Int64.to_int rem];
+  let rec go x = let div, rem = I.div_rem x (I.of_int 94) in
+                 (if div = I.zero then [] else go div) @ [I.to_int rem];
   in
   go i |> List.map (fun x -> Char.chr (x + Char.code '!')) |> List.to_seq |> String.of_seq;;
 
@@ -34,8 +38,8 @@ let rec encode_expr e =
                   | _ -> failwith "unsupported expr";;
 
 assert (encode_expr (Strn "Hello World!") = "SB%,,/}Q/2,$_");;
-assert (encode_expr (Integer 1337L) = "I/6");;
-assert (encode_expr (Integer 15818151L) = "I4%34");;
+assert (encode_expr (Integer (I.of_int 1337)) = "I/6");;
+assert (encode_expr (Integer (I.of_int 15818151)) = "I4%34");;
 
 
 (* ---------------------------------------------------------------------- *)
@@ -45,11 +49,11 @@ let decode_char c = string_chars.[Char.code c - 33];;
 let decode_string s = String.map decode_char s;;
 
 let decode_int s = String.to_seq s
-                     |> Seq.mapi (fun i c -> Z.mul (Z.pow (Z.of_int 94) (String.length s - i - 1))
-                                               (Z.of_int (Char.code c - Char.code '!')))
-                     |> Seq.fold_left Z.add Z.zero |> Z.to_int64;;
+                     |> Seq.mapi (fun i c -> I.mul (I.pow (I.of_int 94) (String.length s - i - 1))
+                                               (I.of_int (Char.code c - Char.code '!')))
+                     |> Seq.fold_left I.add I.zero;;
 
-assert (decode_int "/6" = 1337L);;
+assert (decode_int "/6" = (I.of_int 1337));;
 assert (decode_string "B%,,/}Q/2,$_" = "Hello World!");;
 
 
@@ -114,7 +118,7 @@ let rec eval e =
   | If i -> eval (if bool_val (eval i.cond) then i.when_true else i.when_false)
   | UnOp o -> let argval = eval o.arg in
       (match o.op with
-        | '-' -> Integer (Int64.mul (-1L) (integer_val argval))
+        | '-' -> Integer (I.mul (I.of_int (-1)) (integer_val argval))
         | '!' -> Bool (not (bool_val argval))
         | '#' -> Integer (decode_int (encode_string (string_val argval)))
         | '$' -> Strn (decode_string (encode_int (integer_val argval)))
@@ -123,11 +127,11 @@ let rec eval e =
   | BinOp o -> let intop f = Integer (f (integer_val (eval o.arg1)) (integer_val (eval o.arg2))) in
                let cmpop f = Bool (f (integer_val (eval o.arg1)) (integer_val (eval o.arg2))) in
                (match o.op with
-                 | '+' -> intop Int64.add
-                 | '-' -> intop Int64.sub
-                 | '*' -> intop Int64.mul
-                 | '/' -> intop Int64.div
-                 | '%' -> intop Int64.(rem)
+                 | '+' -> intop I.add
+                 | '-' -> intop I.sub
+                 | '*' -> intop I.mul
+                 | '/' -> intop I.div
+                 | '%' -> intop I.rem
                  | '<' -> cmpop (<)
                  | '>' -> cmpop (>)
                  | '=' -> Bool (match eval o.arg1 with
@@ -139,9 +143,9 @@ let rec eval e =
                  | '|' -> Bool (bool_val (eval o.arg1) || bool_val (eval o.arg2))
                  | '&' -> Bool (bool_val (eval o.arg1) && bool_val (eval o.arg2))
                  | '.' -> Strn (string_val (eval o.arg1) ^ string_val (eval o.arg2))
-                 | 'T' -> Strn (String.sub (string_val (eval o.arg2)) 0 (Int64.to_int (integer_val (eval o.arg1))))
+                 | 'T' -> Strn (String.sub (string_val (eval o.arg2)) 0 (I.to_int (integer_val (eval o.arg1))))
                  | 'D' -> let s = string_val (eval o.arg2) in
-                          let n = Int64.to_int (integer_val (eval o.arg1)) in
+                          let n = I.to_int (integer_val (eval o.arg1)) in
                           Strn (String.sub s n (String.length s - n))
                 | '$' -> (match o.arg1 with
                       | Lambda l -> eval (reduce l.arg l.varnum o.arg2)
@@ -156,27 +160,27 @@ let rec eval e =
 
 let run s = eval (parse_expr s);;
 
-(* assert (run "? B> I# I$ S9%3 S./" = Strn "no");; *)
-(* assert (run "U- I$" = Integer (-3L));; *)
-(* assert (run "U! T" = Bool false);; *)
-(* assert (run "U# S4%34" = Integer 15818151L);; *)
-(* assert (run "U$ I4%34" = Strn "test");; *)
-(* assert (integer_val (run "B+ I# I$") = 5L);; *)
-(* assert (integer_val (run "B- I$ I#") = 1L);; *)
-(* assert (integer_val (run "B* I$ I#") = 6L);; *)
-(* assert (integer_val (run "B/ U- I( I#") = (-3L));; *)
-(* assert (integer_val (run "B% U- I( I#") = (-1L));; *)
-(* assert (bool_val (run  "B= I$ I#") = false);; *)
-(* assert (bool_val (run  "B< I$ I#") = false);; *)
-(* assert (bool_val (run  "B> I$ I#") = true);; *)
-(* assert (bool_val (run "B| T F") = true);; *)
-(* assert (bool_val (run "B& T F") = false);; *)
-(* assert (string_val (run "B. S4% S34") = "test");; *)
-(* assert (string_val (run "BT I$ S4%34") = "tes");; *)
-(* assert (string_val (run "BD I$ S4%34") = "t");; *)
-(* assert (run "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK" = Strn "Hello World!");; *)
-(* assert (run "B$ L\" B+ v\" v\" B* I$ I#" = parse_expr "I-");; *)
-(* assert (run "B$ L# B$ L\" B+ v\" v\" B* I$ I# v8" = parse_expr "I-");; *)
+assert (run "? B> I# I$ S9%3 S./" = Strn "no");;
+assert (run "U- I$" = Integer (I.of_int (-3)));;
+assert (run "U! T" = Bool false);;
+assert (run "U# S4%34" = Integer (I.of_int 15818151));;
+assert (run "U$ I4%34" = Strn "test");;
+assert (integer_val (run "B+ I# I$") = I.of_int 5);;
+assert (integer_val (run "B- I$ I#") = I.of_int 1);;
+assert (integer_val (run "B* I$ I#") = I.of_int 6);;
+assert (integer_val (run "B/ U- I( I#") = I.of_int (-3));;
+assert (integer_val (run "B% U- I( I#") = I.of_int (-1));;
+assert (bool_val (run  "B= I$ I#") = false);;
+assert (bool_val (run  "B< I$ I#") = false);;
+assert (bool_val (run  "B> I$ I#") = true);;
+assert (bool_val (run "B| T F") = true);;
+assert (bool_val (run "B& T F") = false);;
+assert (string_val (run "B. S4% S34") = "test");;
+assert (string_val (run "BT I$ S4%34") = "tes");;
+assert (string_val (run "BD I$ S4%34") = "t");;
+assert (run "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK" = Strn "Hello World!");;
+assert (run "B$ L\" B+ v\" v\" B* I$ I#" = parse_expr "I-");;
+assert (run "B$ L# B$ L\" B+ v\" v\" B* I$ I# v8" = parse_expr "I-");;
 
 let example raw =
   (* Stdlib.print_string @@ "\n============================================================\nRAW:\n" ^ (show_expr (parse_expr raw)); *)
@@ -189,4 +193,3 @@ let language_test =
 
 (* example language_test;; *)
 
-(* example "B$ B$ B$ B$ L$ L$ L$ L# v$ I\" I# I$ I%";; *)
