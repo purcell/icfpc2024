@@ -35,7 +35,7 @@
                 vg
                 # # qcheck
                 # ppxlib
-                # ppx_deriving
+                ppx_deriving
                 # # odoc
                 # core_kernel
               ];
