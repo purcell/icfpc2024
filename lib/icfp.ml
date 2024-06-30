@@ -15,6 +15,16 @@ type expr =
 [@@deriving show]
 ;;
 
+let rec to_sexp e = match e with
+  | Integer i -> Z.to_string i
+  | Strn s -> Printf.sprintf "%S" s
+  | Bool b -> Printf.sprintf "%B" b
+  | Var i -> "v" ^ Z.to_string i.varnum
+  | If i -> Printf.sprintf "(if %s %s %s)" (to_sexp i.cond) (to_sexp i.when_true) (to_sexp i.when_false)
+  | UnOp o -> Printf.sprintf "(%c %s)" o.op (to_sexp o.arg)
+  | BinOp o -> Printf.sprintf "(%c %s %s)" o.op (to_sexp o.arg1) (to_sexp o.arg2)
+  | Lambda l -> Printf.sprintf "(lambda (v%s) %s)" (Z.to_string l.varnum) (to_sexp l.arg)
+;;
 
 (* ---------------------------------------------------------------------- *)
 (* BASE-94 ENCODING *)

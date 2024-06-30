@@ -13,6 +13,13 @@
 )
 
 (executable
+ (public_name sexp)
+ (name sexp)
+ (modules sexp)
+ (libraries icfpc2024)
+)
+
+(executable
  (public_name eval)
  (name eval)
  (modules eval)
