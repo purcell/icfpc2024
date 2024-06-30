@@ -133,8 +133,8 @@ let rec eval e =
                  | '*' -> intop I.mul
                  | '/' -> intop I.div
                  | '%' -> intop I.rem
-                 | '<' -> cmpop (<)
-                 | '>' -> cmpop (>)
+                 | '<' -> cmpop Z.lt
+                 | '>' -> cmpop Z.gt
                  | '=' -> Bool (match eval o.arg1 with
                          | Integer v -> v = integer_val (eval o.arg2)
                          | Bool v -> v = bool_val (eval o.arg2)
