@@ -34,6 +34,7 @@ let rec encode_expr e =
                   | Bool b -> "B" ^ if b then "T" else "F"
                   | Strn s -> "S" ^ encode_string s
                   | Integer i -> "I" ^ encode_int i
+                  | Var v -> "v" ^ encode_int v.varnum
                   | If x -> "? " ^ encode_expr x.cond ^ " " ^ encode_expr x.when_true ^ " " ^ encode_expr x.when_false
                   | _ -> failwith "unsupported expr";;
 
@@ -154,7 +155,7 @@ let rec eval e =
                  | _ -> failwith "unsupported binop"
                )
   | Lambda _ -> e
-  | Var _ -> failwith "unbound var"
+  | Var v -> failwith @@ Printf.sprintf "unbound var: %s (%s)" (Z.to_string v.varnum) (encode_int v.varnum)
 ;;
 
 
