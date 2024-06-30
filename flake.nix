@@ -42,6 +42,9 @@
             in
             pkgs.mkShell {
               buildInputs = ocamlDeps ++ [ pkgs.jq pkgs.curl ];
+              shellHook = ''
+                export OCAMLRUNPARAM=b
+              '';
             }
           );
       }
