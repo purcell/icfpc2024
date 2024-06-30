@@ -97,10 +97,10 @@ let rec reduce e var value =
   match e with
   | Var v -> if v.varnum = var then value else e
   | Strn _ | Integer _ | Bool _ -> e
-  | UnOp o -> UnOp { o with arg = recurse o.arg }
-  | BinOp o -> BinOp { o with arg1 = recurse o.arg1; arg2 = recurse o.arg2 }
-  | If i -> If { i with cond = recurse i.cond }
-  | Lambda l -> if l.varnum = var then e else Lambda { l with arg = recurse l.arg }
+  | UnOp o -> UnOp { op = o.op; arg = recurse o.arg }
+  | BinOp o -> BinOp { op = o.op; arg1 = recurse o.arg1; arg2 = recurse o.arg2 }
+  | If i -> If { cond = recurse i.cond; when_true = recurse i.when_true; when_false = recurse i.when_false; }
+  | Lambda l -> if l.varnum = var then e else Lambda { varnum = l.varnum; arg = recurse l.arg }
 ;;
 
 (* ---------------------------------------------------------------------- *)
@@ -182,6 +182,9 @@ assert (string_val (run "BD I$ S4%34") = "t");;
 assert (run "B$ B$ L# L$ v# B. SB%,,/ S}Q/2,$_ IK" = Strn "Hello World!");;
 assert (run "B$ L\" B+ v\" v\" B* I$ I#" = parse_expr "I-");;
 assert (run "B$ L# B$ L\" B+ v\" v\" B* I$ I# v8" = parse_expr "I-");;
+
+(* Example that "uses 109 beta reductions" *)
+assert (run "B$ B$ L\" B$ L# B$ v\" B$ v# v# L# B$ v\" B$ v# v# L\" L# ? B= v# I! I\" B$ L$ B+ B$ v\" v$ B$ v\" v$ B- v# I\" I%" = Integer (Z.of_int 16));;
 
 let example raw =
   (* Stdlib.print_string @@ "\n============================================================\nRAW:\n" ^ (show_expr (parse_expr raw)); *)
