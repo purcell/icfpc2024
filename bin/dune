@@ -19,6 +19,13 @@
  (libraries icfpc2024)
 )
 
+(executable
+ (public_name lambdaman)
+ (name lambdaman)
+ (modules lambdaman)
+ (libraries icfpc2024 ocamlgraph)
+)
+
 (env
   (release
    (ocamlopt_flags (:standard -O3)))

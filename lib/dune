@@ -2,4 +2,4 @@
  (name icfpc2024)
  (wrapped false)
  (preprocess (pps ppx_deriving.show))
- (libraries zarith))
+ (libraries zarith ocamlgraph))
