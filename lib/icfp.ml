@@ -46,7 +46,10 @@ let rec encode_expr e =
                   | Integer i -> "I" ^ encode_int i
                   | Var v -> "v" ^ encode_int v.varnum
                   | If x -> "? " ^ encode_expr x.cond ^ " " ^ encode_expr x.when_true ^ " " ^ encode_expr x.when_false
-                  | _ -> failwith "unsupported expr";;
+                  | Lambda l -> "L" ^ encode_int l.varnum ^ " " ^ encode_expr l.arg
+                  | UnOp o -> "U" ^ String.make 1 o.op ^ " " ^ encode_expr o.arg
+                  | BinOp o -> "B" ^ String.make 1 o.op ^ " " ^ encode_expr o.arg1 ^ " " ^ encode_expr o.arg2
+                  ;;
 
 assert (encode_expr (Strn "Hello World!") = "SB%,,/}Q/2,$_");;
 assert (encode_expr (Integer (I.of_int 1337)) = "I/6");;

@@ -132,3 +132,70 @@ let walk maze =
   done;
   List.rev !moves_taken |> List.map move_to_dir |> List.to_seq |> String.of_seq
 ;;
+
+let chunks s =
+  String.to_seq s
+    |> Seq.group (=)
+    |> Seq.map (fun seq -> ((let (c, _) = Option.get (Seq.uncons seq) in c), Seq.length seq)) |> List.of_seq
+;;
+
+module IntSet = Set.Make(Int)
+
+(* Run-length encoding in the lambda calculus sounds hard, so instead I
+bind some hopefully-reused strings to variables and substitute them *)
+let compress str =
+  let expansions = Array.of_list [
+          (String.make 640 'U');
+          (String.make 640 'D');
+          (String.make 640 'L');
+          (String.make 640 'R');
+          (String.make 320 'U');
+          (String.make 320 'D');
+          (String.make 320 'L');
+          (String.make 320 'R');
+          (String.make 160 'U');
+          (String.make 160 'D');
+          (String.make 160 'L');
+          (String.make 160 'R');
+          (String.make 80 'U');
+          (String.make 80 'D');
+          (String.make 80 'L');
+          (String.make 80 'R');
+          (String.make 40 'U');
+          (String.make 40 'D');
+          (String.make 40 'L');
+          (String.make 40 'R');
+          (String.make 20 'U');
+          (String.make 20 'D');
+          (String.make 20 'L');
+          (String.make 20 'R');
+          (String.make 10 'U');
+          (String.make 10 'D');
+          (String.make 10 'L');
+          (String.make 10 'R');
+          "ULULULULULULULUL";
+          "URURURURULULULUL";
+          "ULULULULULULULUL";
+          "URURURURULULULUL";
+          "ULULULUL";
+          "URURURUR";
+          "ULULULUL";
+          "URURURUR";
+    ] in
+  Icfp.(
+    let rec to_expr (s : string) (sofar : string) (seen : IntSet.t) =
+      match Array.find_index (fun e -> String.starts_with ~prefix:e s) expansions with
+      | Some i -> let expansion_len = (String.length (Array.get expansions i)) in
+                  let rest = (String.sub s expansion_len (String.length s - expansion_len)) in
+                  let (rest_exp, seen) = to_expr rest "" (IntSet.add i seen) in
+                  let ex = BinOp { op = '.'; arg1 = Var { varnum = Z.of_int i }; arg2 = rest_exp } in
+                  if sofar = "" then (ex, seen)
+                  else (BinOp { op = '.'; arg1 = Strn sofar; arg2 = ex }, seen)
+      | None -> if s = "" then (Strn sofar, seen)
+                else to_expr (String.sub s 1 (String.length s - 1)) (sofar ^ String.sub s 0 1) seen
+    in
+    let (expr, seen) = to_expr str "" IntSet.empty in
+    let expander = IntSet.fold (fun i e -> Icfp.( BinOp { op = '$'; arg1 = Lambda { varnum = Z.of_int i; arg = e }; arg2 = Strn (Array.get expansions i)})) seen expr in
+      Icfp.encode_expr expander
+  )
+;;
